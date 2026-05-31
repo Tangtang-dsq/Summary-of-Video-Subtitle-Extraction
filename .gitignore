@@ -1,0 +1,5 @@
+/.env
+/.venv
+/history.json
+/temp_audio
+/__pycache__

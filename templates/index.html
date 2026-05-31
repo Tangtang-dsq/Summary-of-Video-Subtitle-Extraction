@@ -1,0 +1,1504 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>视频字幕提取与AI智能总结</title>
+    <meta name="description" content="支持 YouTube 和 Bilibili，自动提取字幕，AI 智能总结，一键保存到 Obsidian 知识库">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <style>
+        /* ============================== */
+        /*   CSS Variables & Reset        */
+        /* ============================== */
+        :root {
+            --bg-primary: #06060f;
+            --bg-secondary: #0d0d1f;
+            --bg-card: rgba(18, 18, 42, 0.7);
+            --bg-card-hover: rgba(24, 24, 56, 0.8);
+            --glass-border: rgba(255, 255, 255, 0.06);
+            --glass-border-hover: rgba(255, 255, 255, 0.12);
+            --text-primary: #e8e8f0;
+            --text-secondary: #8888a8;
+            --text-muted: #55556a;
+            --accent-1: #6c5ce7;
+            --accent-2: #a855f7;
+            --accent-3: #06b6d4;
+            --gradient-main: linear-gradient(135deg, #6c5ce7 0%, #a855f7 50%, #06b6d4 100%);
+            --gradient-subtle: linear-gradient(135deg, rgba(108,92,231,0.15) 0%, rgba(168,85,247,0.10) 50%, rgba(6,182,212,0.08) 100%);
+            --gradient-glow: linear-gradient(135deg, rgba(108,92,231,0.4) 0%, rgba(168,85,247,0.3) 50%, rgba(6,182,212,0.2) 100%);
+            --success: #10b981;
+            --error: #ef4444;
+            --warning: #f59e0b;
+            --radius-sm: 8px;
+            --radius-md: 12px;
+            --radius-lg: 16px;
+            --radius-xl: 24px;
+            --shadow-glow: 0 0 40px rgba(108,92,231,0.15), 0 0 80px rgba(168,85,247,0.08);
+            --transition-fast: 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+            --transition-normal: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            --transition-slow: 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+        html { scroll-behavior: smooth; }
+
+        body {
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            overflow-x: hidden;
+            line-height: 1.6;
+        }
+
+        /* ============================== */
+        /*   Animated Background          */
+        /* ============================== */
+        .bg-mesh {
+            position: fixed;
+            inset: 0;
+            z-index: 0;
+            pointer-events: none;
+            overflow: hidden;
+        }
+        .bg-mesh::before {
+            content: '';
+            position: absolute;
+            width: 600px; height: 600px;
+            top: -100px; left: -100px;
+            background: radial-gradient(circle, rgba(108,92,231,0.12) 0%, transparent 70%);
+            animation: floatOrb 20s ease-in-out infinite;
+        }
+        .bg-mesh::after {
+            content: '';
+            position: absolute;
+            width: 500px; height: 500px;
+            bottom: -100px; right: -100px;
+            background: radial-gradient(circle, rgba(6,182,212,0.10) 0%, transparent 70%);
+            animation: floatOrb 25s ease-in-out infinite reverse;
+        }
+        @keyframes floatOrb {
+            0%, 100% { transform: translate(0, 0) scale(1); }
+            33% { transform: translate(80px, -60px) scale(1.1); }
+            66% { transform: translate(-40px, 40px) scale(0.95); }
+        }
+
+        /* ============================== */
+        /*   Layout                       */
+        /* ============================== */
+        .app-container {
+            position: relative;
+            z-index: 1;
+            max-width: 960px;
+            margin: 0 auto;
+            padding: 2rem 1.5rem 4rem;
+        }
+
+        /* ============================== */
+        /*   Header                       */
+        /* ============================== */
+        .header {
+            text-align: center;
+            margin-bottom: 3rem;
+            padding-top: 1rem;
+        }
+        .header-logo {
+            font-size: 3rem;
+            margin-bottom: 0.75rem;
+            display: inline-block;
+            animation: logoFloat 3s ease-in-out infinite;
+        }
+        @keyframes logoFloat {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-6px); }
+        }
+        .header h1 {
+            font-size: 2rem;
+            font-weight: 800;
+            background: var(--gradient-main);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 0.5rem;
+            letter-spacing: -0.5px;
+        }
+        .header p {
+            color: var(--text-secondary);
+            font-size: 0.95rem;
+            font-weight: 400;
+        }
+        .badge-row {
+            display: flex;
+            gap: 0.5rem;
+            justify-content: center;
+            margin-top: 1rem;
+        }
+        .badge {
+            font-size: 0.7rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            padding: 0.3rem 0.75rem;
+            border-radius: 100px;
+            background: rgba(108,92,231,0.15);
+            border: 1px solid rgba(108,92,231,0.25);
+            color: var(--accent-2);
+        }
+        .badge.cyan { background: rgba(6,182,212,0.12); border-color: rgba(6,182,212,0.25); color: var(--accent-3); }
+
+        /* ============================== */
+        /*   Glass Card                   */
+        /* ============================== */
+        .glass-card {
+            background: var(--bg-card);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius-lg);
+            backdrop-filter: blur(24px);
+            -webkit-backdrop-filter: blur(24px);
+            padding: 1.75rem;
+            margin-bottom: 1.25rem;
+            transition: border-color var(--transition-normal), box-shadow var(--transition-normal);
+        }
+        .glass-card:hover {
+            border-color: var(--glass-border-hover);
+        }
+
+        /* ============================== */
+        /*   Input Area                   */
+        /* ============================== */
+        .input-section { position: relative; }
+        .input-wrapper {
+            display: flex;
+            gap: 0.75rem;
+            align-items: stretch;
+        }
+        .url-input {
+            flex: 1;
+            background: rgba(255,255,255,0.04);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius-md);
+            padding: 0.85rem 1.15rem;
+            font-size: 0.95rem;
+            color: var(--text-primary);
+            font-family: 'Inter', sans-serif;
+            transition: all var(--transition-normal);
+            outline: none;
+        }
+        .url-input::placeholder { color: var(--text-muted); }
+        .url-input:focus {
+            border-color: var(--accent-1);
+            box-shadow: 0 0 0 3px rgba(108,92,231,0.15), 0 0 20px rgba(108,92,231,0.08);
+        }
+
+        /* ============================== */
+        /*   Buttons                      */
+        /* ============================== */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.85rem 1.5rem;
+            border: none;
+            border-radius: var(--radius-md);
+            font-family: 'Inter', sans-serif;
+            font-size: 0.875rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all var(--transition-normal);
+            white-space: nowrap;
+            position: relative;
+            overflow: hidden;
+        }
+        .btn::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: rgba(255,255,255,0);
+            transition: background var(--transition-fast);
+        }
+        .btn:hover::before { background: rgba(255,255,255,0.08); }
+        .btn:active { transform: scale(0.97); }
+
+        .btn-primary {
+            background: var(--gradient-main);
+            color: white;
+            box-shadow: 0 4px 15px rgba(108,92,231,0.3);
+        }
+        .btn-primary:hover {
+            box-shadow: 0 6px 25px rgba(108,92,231,0.45);
+            transform: translateY(-1px);
+        }
+        .btn-primary:active { transform: translateY(0) scale(0.97); }
+
+        .btn-secondary {
+            background: rgba(255,255,255,0.06);
+            color: var(--text-primary);
+            border: 1px solid var(--glass-border);
+        }
+        .btn-secondary:hover {
+            background: rgba(255,255,255,0.10);
+            border-color: var(--glass-border-hover);
+        }
+
+        .btn-success {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            color: white;
+            box-shadow: 0 4px 15px rgba(16,185,129,0.3);
+        }
+        .btn-success:hover {
+            box-shadow: 0 6px 25px rgba(16,185,129,0.45);
+            transform: translateY(-1px);
+        }
+
+        .btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+            transform: none !important;
+        }
+        .btn:disabled::before { display: none; }
+
+        .btn-group {
+            display: flex;
+            gap: 0.75rem;
+            margin-top: 1.25rem;
+            flex-wrap: wrap;
+        }
+
+        /* ============================== */
+        /*   Settings Row                 */
+        /* ============================== */
+        .settings-row {
+            display: flex;
+            gap: 1rem;
+            margin-top: 1rem;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        .setting-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+        }
+        .setting-item select,
+        .setting-item input[type="text"] {
+            background: rgba(255,255,255,0.04);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius-sm);
+            padding: 0.45rem 0.7rem;
+            color: var(--text-primary);
+            font-family: 'Inter', sans-serif;
+            font-size: 0.8rem;
+            outline: none;
+            transition: border-color var(--transition-normal);
+        }
+        .setting-item select:focus,
+        .setting-item input[type="text"]:focus {
+            border-color: var(--accent-1);
+        }
+        .setting-item select option { background: #1a1a2e; }
+
+        .checkbox-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+            cursor: pointer;
+        }
+        .checkbox-wrapper input[type="checkbox"] {
+            width: 16px; height: 16px;
+            accent-color: var(--accent-1);
+            cursor: pointer;
+        }
+
+        /* ============================== */
+        /*   Progress Steps               */
+        /* ============================== */
+        .progress-bar {
+            display: flex;
+            align-items: center;
+            gap: 0;
+            margin-bottom: 1.25rem;
+        }
+        .progress-step {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.78rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            transition: color var(--transition-normal);
+        }
+        .progress-step .step-icon {
+            width: 28px; height: 28px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.75rem;
+            background: rgba(255,255,255,0.04);
+            border: 1.5px solid var(--glass-border);
+            transition: all var(--transition-normal);
+        }
+        .progress-step.active { color: var(--accent-2); }
+        .progress-step.active .step-icon {
+            background: rgba(168,85,247,0.15);
+            border-color: var(--accent-2);
+            box-shadow: 0 0 12px rgba(168,85,247,0.3);
+        }
+        .progress-step.done { color: var(--success); }
+        .progress-step.done .step-icon {
+            background: rgba(16,185,129,0.15);
+            border-color: var(--success);
+        }
+        .progress-connector {
+            flex: 1;
+            height: 1.5px;
+            background: var(--glass-border);
+            margin: 0 0.6rem;
+            position: relative;
+            overflow: hidden;
+        }
+        .progress-connector .fill {
+            position: absolute;
+            inset: 0;
+            background: var(--gradient-main);
+            transform: scaleX(0);
+            transform-origin: left;
+            transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .progress-connector.filled .fill { transform: scaleX(1); }
+
+        /* ============================== */
+        /*   Step Sections                */
+        /* ============================== */
+        .step-section {
+            display: none;
+            animation: fadeSlideIn 0.45s ease-out;
+        }
+        .step-section.visible { display: block; }
+        @keyframes fadeSlideIn {
+            from { opacity: 0; transform: translateY(12px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .section-title {
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            font-size: 1rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+            color: var(--text-primary);
+        }
+        .section-title .icon { font-size: 1.15rem; }
+
+        /* ============================== */
+        /*   Subtitle Preview             */
+        /* ============================== */
+        .subtitle-preview {
+            background: rgba(0,0,0,0.3);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius-md);
+            padding: 1.15rem;
+            max-height: 280px;
+            overflow-y: auto;
+            font-size: 0.85rem;
+            line-height: 1.75;
+            color: var(--text-secondary);
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        .subtitle-preview::-webkit-scrollbar { width: 5px; }
+        .subtitle-preview::-webkit-scrollbar-track { background: transparent; }
+        .subtitle-preview::-webkit-scrollbar-thumb {
+            background: rgba(255,255,255,0.08);
+            border-radius: 10px;
+        }
+
+        /* ============================== */
+        /*   Markdown Summary             */
+        /* ============================== */
+        .summary-content {
+            background: rgba(0,0,0,0.3);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius-md);
+            padding: 1.5rem;
+            max-height: 500px;
+            overflow-y: auto;
+            font-size: 0.88rem;
+            line-height: 1.8;
+        }
+        .summary-content::-webkit-scrollbar { width: 5px; }
+        .summary-content::-webkit-scrollbar-track { background: transparent; }
+        .summary-content::-webkit-scrollbar-thumb {
+            background: rgba(255,255,255,0.08);
+            border-radius: 10px;
+        }
+        .summary-content h2 {
+            font-size: 1.1rem;
+            font-weight: 700;
+            margin: 1.25rem 0 0.6rem;
+            background: var(--gradient-main);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .summary-content h2:first-child { margin-top: 0; }
+        .summary-content h3 {
+            font-size: 0.95rem;
+            font-weight: 600;
+            color: var(--accent-3);
+            margin: 1rem 0 0.4rem;
+        }
+        .summary-content ul, .summary-content ol {
+            padding-left: 1.25rem;
+            margin: 0.5rem 0;
+        }
+        .summary-content li {
+            margin-bottom: 0.35rem;
+            color: var(--text-secondary);
+        }
+        .summary-content p { margin: 0.5rem 0; color: var(--text-secondary); }
+        .summary-content strong { color: var(--text-primary); }
+        .summary-content blockquote {
+            border-left: 3px solid var(--accent-1);
+            padding: 0.4rem 0 0.4rem 1rem;
+            margin: 0.75rem 0;
+            color: var(--text-secondary);
+            font-style: italic;
+        }
+        .summary-content code {
+            background: rgba(108,92,231,0.15);
+            padding: 0.15rem 0.4rem;
+            border-radius: 4px;
+            font-size: 0.82rem;
+        }
+
+        /* ============================== */
+        /*   Meta Info Bar                */
+        /* ============================== */
+        .meta-bar {
+            display: flex;
+            gap: 1.25rem;
+            flex-wrap: wrap;
+            font-size: 0.78rem;
+            color: var(--text-muted);
+            margin-bottom: 0.75rem;
+        }
+        .meta-item { display: flex; align-items: center; gap: 0.35rem; }
+
+        /* ============================== */
+        /*   Status Messages              */
+        /* ============================== */
+        .status-msg {
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+            font-size: 0.82rem;
+            margin-top: 0.75rem;
+            padding: 0.6rem 0.9rem;
+            border-radius: var(--radius-sm);
+            animation: fadeSlideIn 0.3s ease-out;
+        }
+        .status-msg.success {
+            background: rgba(16,185,129,0.1);
+            border: 1px solid rgba(16,185,129,0.2);
+            color: var(--success);
+        }
+        .status-msg.error {
+            background: rgba(239,68,68,0.1);
+            border: 1px solid rgba(239,68,68,0.2);
+            color: var(--error);
+        }
+        .status-msg.info {
+            background: rgba(108,92,231,0.1);
+            border: 1px solid rgba(108,92,231,0.2);
+            color: var(--accent-2);
+        }
+
+        /* ============================== */
+        /*   Loading Spinner              */
+        /* ============================== */
+        .spinner {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+        .spinner-dots {
+            display: inline-flex;
+            gap: 3px;
+        }
+        .spinner-dots span {
+            width: 5px; height: 5px;
+            border-radius: 50%;
+            background: currentColor;
+            animation: dotPulse 1.2s ease-in-out infinite;
+        }
+        .spinner-dots span:nth-child(2) { animation-delay: 0.15s; }
+        .spinner-dots span:nth-child(3) { animation-delay: 0.3s; }
+        @keyframes dotPulse {
+            0%, 60%, 100% { opacity: 0.3; transform: scale(0.8); }
+            30% { opacity: 1; transform: scale(1.2); }
+        }
+
+        /* ============================== */
+        /*   History Panel                */
+        /* ============================== */
+        .history-toggle {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            cursor: pointer;
+            user-select: none;
+        }
+        .history-toggle .arrow {
+            transition: transform var(--transition-normal);
+            font-size: 0.8rem;
+            color: var(--text-muted);
+        }
+        .history-toggle.open .arrow { transform: rotate(180deg); }
+        .history-list {
+            display: none;
+            margin-top: 0.75rem;
+        }
+        .history-list.open { display: block; }
+        .history-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.65rem 0.8rem;
+            border-radius: var(--radius-sm);
+            background: rgba(255,255,255,0.02);
+            border: 1px solid transparent;
+            margin-bottom: 0.4rem;
+            font-size: 0.8rem;
+            transition: all var(--transition-fast);
+            cursor: default;
+        }
+        .history-item:hover {
+            background: rgba(255,255,255,0.04);
+            border-color: var(--glass-border);
+        }
+        .history-title {
+            color: var(--text-primary);
+            font-weight: 500;
+            max-width: 55%;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .history-date { color: var(--text-muted); font-size: 0.72rem; }
+        .history-platform {
+            font-size: 0.65rem;
+            padding: 0.15rem 0.45rem;
+            border-radius: 100px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        .history-platform.youtube { background: rgba(239,68,68,0.15); color: #f87171; }
+        .history-platform.bilibili { background: rgba(6,182,212,0.15); color: #22d3ee; }
+        .history-empty {
+            text-align: center;
+            color: var(--text-muted);
+            font-size: 0.8rem;
+            padding: 1.5rem 0;
+        }
+
+        /* ============================== */
+        /*   Footer                       */
+        /* ============================== */
+        .footer {
+            text-align: center;
+            margin-top: 3rem;
+            padding-top: 1.5rem;
+            border-top: 1px solid var(--glass-border);
+            color: var(--text-muted);
+            font-size: 0.75rem;
+        }
+
+        /* ============================== */
+        /*   Responsive                   */
+        /* ============================== */
+        @media (max-width: 640px) {
+            .app-container { padding: 1rem 0.75rem 2rem; }
+            .header h1 { font-size: 1.5rem; }
+            .input-wrapper { flex-direction: column; }
+            .btn { width: 100%; justify-content: center; }
+            .btn-group { flex-direction: column; }
+            .settings-row { flex-direction: column; align-items: stretch; }
+            .progress-step span.step-label { display: none; }
+        }
+        .btn-warning {
+            background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+            color: white;
+            box-shadow: 0 4px 15px rgba(245,158,11,0.3);
+        }
+        .btn-warning:hover {
+            box-shadow: 0 6px 25px rgba(245,158,11,0.45);
+            transform: translateY(-1px);
+        }
+        .btn-warning:active { transform: translateY(0) scale(0.97); }
+
+        /* Modal Styles */
+        .modal {
+            position: fixed;
+            inset: 0;
+            background: rgba(6, 6, 15, 0.7);
+            backdrop-filter: blur(10px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            animation: fadeIn 0.25s ease-out;
+        }
+        .modal-content {
+            width: 320px;
+            padding: 1.5rem;
+            border-radius: var(--radius-lg);
+            background: rgba(18, 18, 42, 0.85);
+            border: 1px solid var(--glass-border-hover);
+            box-shadow: var(--shadow-glow);
+            animation: scaleIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        .modal-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 1.25rem;
+        }
+        .modal-header h3 {
+            font-size: 1.05rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin: 0;
+        }
+        .close-btn {
+            font-size: 1.5rem;
+            color: var(--text-muted);
+            cursor: pointer;
+            transition: color var(--transition-fast);
+            line-height: 1;
+        }
+        .close-btn:hover { color: var(--error); }
+        .qr-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: rgba(0,0,0,0.2);
+            border-radius: var(--radius-md);
+            padding: 1rem;
+            min-height: 200px;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        @keyframes scaleIn {
+            from { transform: scale(0.9); opacity: 0; }
+            to { transform: scale(1); opacity: 1; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="bg-mesh"></div>
+
+<div class="app-container">
+    <!-- Header -->
+    <header class="header">
+        <div class="header-logo">🎬</div>
+        <h1>视频字幕提取 · AI 智能总结</h1>
+        <p>粘贴链接 → 提取字幕 → AI 生成结构化笔记 → 一键保存 Obsidian</p>
+        <div class="badge-row">
+            <span class="badge">YouTube</span>
+            <span class="badge cyan">Bilibili</span>
+            <span class="badge">GPT-4o</span>
+        </div>
+    </header>
+
+    <!-- Progress Bar -->
+    <div class="progress-bar" id="progressBar">
+        <div class="progress-step" id="step1" data-step="1">
+            <div class="step-icon">1</div>
+            <span class="step-label">提取字幕</span>
+        </div>
+        <div class="progress-connector" id="conn1"><div class="fill"></div></div>
+        <div class="progress-step" id="step2" data-step="2">
+            <div class="step-icon">2</div>
+            <span class="step-label">AI 总结</span>
+        </div>
+        <div class="progress-connector" id="conn2"><div class="fill"></div></div>
+        <div class="progress-step" id="step3" data-step="3">
+            <div class="step-icon">3</div>
+            <span class="step-label">保存 Obsidian</span>
+        </div>
+    </div>
+
+    <!-- Input Card -->
+    <div class="glass-card input-section">
+        <div class="input-wrapper">
+            <input type="text" class="url-input" id="videoUrl"
+                   placeholder="粘贴视频链接  ·  YouTube 或 Bilibili" />
+            <button class="btn btn-primary" id="extractBtn">
+                <span>🔍</span> 提取字幕
+            </button>
+        </div>
+        
+        <!-- B站分P选择器 -->
+        <div class="pages-wrapper" id="pagesWrapper" style="display:none; margin-top: 1rem; align-items: center; gap: 0.5rem; justify-content: flex-start;">
+            <span style="font-size: 0.85rem; color: var(--text-secondary); font-weight: 500;">📖 选择章节分P:</span>
+            <select id="pageSelect" style="padding: 0.45rem 0.8rem; border-radius: var(--radius-sm); background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border); color: var(--text-primary); font-size: 0.85rem; outline: none; cursor: pointer; max-width: 400px; font-family: 'Inter', sans-serif;"></select>
+        </div>
+
+        <!-- 语音转文字 (STT) 选项 -->
+        <div id="sttContainer" style="display:none; margin-top: 1.25rem; padding: 1.25rem; border-radius: var(--radius-md); background: rgba(245, 158, 11, 0.05); border: 1px solid rgba(245, 158, 11, 0.2); text-align: center;">
+            <p style="font-size: 0.88rem; margin-bottom: 0.85rem; color: var(--text-secondary); line-height: 1.5;">
+                ⚠️ 该视频未找到官方/自动 CC 字幕。<br>您可以点击下方按钮，使用 <strong>语音转文字 (STT)</strong> 提取（需配置 OpenAI API Key 且可能耗时 1-3 分钟）。
+            </p>
+            <button class="btn btn-warning" id="sttBtn" style="margin: 0 auto; display: flex; align-items: center; gap: 0.5rem;">
+                <span>🎙️</span> 语音转文字提取
+            </button>
+            <div id="sttProgress" style="margin-top: 0.85rem; font-size: 0.82rem; color: var(--accent-3); display: none;"></div>
+        </div>
+
+        <div class="settings-row">
+            <div class="setting-item">
+                <span>🤖 模型:</span>
+                <select id="modelSelect">
+                    <option value="">默认</option>
+                    <optgroup label="OpenAI">
+                        <option value="gpt-4o">GPT-4o</option>
+                        <option value="gpt-4o-mini">GPT-4o Mini</option>
+                        <option value="gpt-4">GPT-4</option>
+                        <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
+                    </optgroup>
+                    <optgroup label="DeepSeek">
+                        <option value="deepseek-v4-pro">DeepSeek V4 Pro</option>
+                        <option value="deepseek-v4-flash">DeepSeek V4 Flash</option>
+                        <option value="deepseek-reasoner">DeepSeek R1</option>
+                        <option value="deepseek-chat">DeepSeek V3</option>
+                    </optgroup>
+                </select>
+            </div>
+            <div class="setting-item">
+                <span>📁 Obsidian 路径:</span>
+                <input type="text" id="vaultPath" placeholder="留空使用 .env 默认配置" style="width: 220px;" />
+            </div>
+            <div class="setting-item">
+                <span>📂 子目录:</span>
+                <input type="text" id="subfolder" placeholder="默认“视频笔记”，留空保存到根目录" style="width: 180px;" />
+            </div>
+            <div class="setting-item">
+                <span>📝 文件名:</span>
+                <input type="text" id="filenameTpl" placeholder="{datetime}_{platform}_{title}" style="width: 240px;" title="可用变量: {date} {time} {datetime} {platform} {title} {id}" />
+            </div>
+            <div class="setting-item">
+                <label class="checkbox-wrapper">
+                    <input type="checkbox" id="includeSubtitles" />
+                    <span>附带原始字幕</span>
+                </label>
+            </div>
+            <div class="setting-item" style="margin-left: auto;">
+                <button class="btn btn-secondary" id="biliLoginBtn" style="padding: 0.45rem 0.85rem; font-size: 0.78rem; border-radius: var(--radius-sm);">
+                    <span>📺</span> B站扫码授权
+                </button>
+            </div>
+        </div>
+        <div class="btn-group">
+            <button class="btn btn-success" id="autoBtn">
+                <span>⚡</span> 一键全自动
+            </button>
+        </div>
+        <div id="inputStatus"></div>
+    </div>
+
+    <!-- Step 1: Subtitles -->
+    <div class="step-section" id="extractSection">
+        <div class="glass-card">
+            <div class="section-title">
+                <span class="icon">📝</span> 提取的字幕内容
+            </div>
+            <div class="meta-bar" id="videoMeta"></div>
+            <div class="subtitle-preview" id="subtitlesPreview"></div>
+            <div class="btn-group">
+                <button class="btn btn-primary" id="summarizeBtn">
+                    <span>🤖</span> AI 智能总结
+                </button>
+                <button class="btn btn-secondary" id="copySubBtn">
+                    <span>📋</span> 复制字幕
+                </button>
+            </div>
+            <div id="extractStatus"></div>
+        </div>
+    </div>
+
+    <!-- Step 2: Summary -->
+    <div class="step-section" id="summarySection">
+        <div class="glass-card">
+            <div class="section-title">
+                <span class="icon">🤖</span> AI 智能总结
+            </div>
+            <div class="summary-content" id="summaryContent"></div>
+            <div class="btn-group">
+                <button class="btn btn-success" id="saveBtn">
+                    <span>💾</span> 保存到 Obsidian
+                </button>
+                <button class="btn btn-secondary" id="copySummaryBtn">
+                    <span>📋</span> 复制总结
+                </button>
+            </div>
+            <div id="summaryStatus"></div>
+        </div>
+    </div>
+
+    <!-- Step 3: Saved -->
+    <div class="step-section" id="savedSection">
+        <div class="glass-card">
+            <div class="section-title">
+                <span class="icon">✅</span> 保存成功
+            </div>
+            <div id="savedInfo" style="font-size: 0.85rem; color: var(--text-secondary);"></div>
+        </div>
+    </div>
+
+    <!-- History -->
+    <div class="glass-card" style="margin-top: 0.5rem;">
+        <div class="history-toggle" id="historyToggle">
+            <div class="section-title" style="margin-bottom: 0;">
+                <span class="icon">📚</span> 历史记录
+            </div>
+            <span class="arrow">▼</span>
+        </div>
+        <div class="history-list" id="historyList"></div>
+    </div>
+
+    <!-- Footer -->
+    <div class="footer">
+        视频字幕提取与AI智能总结工具 · 支持 YouTube & Bilibili · Obsidian 知识库集成
+    </div>
+</div>
+
+    <!-- B站扫码登录 Modal -->
+    <div class="modal" id="qrModal" style="display:none;">
+        <div class="modal-content glass-card">
+            <div class="modal-header">
+                <h3>📺 Bilibili 扫码授权</h3>
+                <span class="close-btn" id="closeQrBtn">&times;</span>
+            </div>
+            <div class="modal-body" style="text-align: center;">
+                <div class="qr-container">
+                    <img id="qrCodeImg" src="" alt="二维码加载中..." style="display:none; width: 180px; height: 180px; margin: 0 auto; border-radius: var(--radius-sm); border: 4px solid white;" />
+                    <div id="qrSpinner" class="spinner" style="margin: 2rem auto; display: flex; justify-content: center;"></div>
+                </div>
+                <div id="qrStatus" class="qr-status" style="margin-top: 1rem; font-size: 0.85rem; color: var(--text-secondary); line-height: 1.4;">正在生成二维码...</div>
+            </div>
+        </div>
+    </div>
+
+<script>
+// ======================== State ========================
+const state = {
+    url: '',
+    platform: '',
+    videoId: '',
+    subtitlesText: '',
+    summary: '',
+    meta: null,
+};
+
+// ======================== DOM ========================
+const $ = id => document.getElementById(id);
+const videoUrl = $('videoUrl');
+const extractBtn = $('extractBtn');
+const autoBtn = $('autoBtn');
+const summarizeBtn = $('summarizeBtn');
+const saveBtn = $('saveBtn');
+const copySubBtn = $('copySubBtn');
+const copySummaryBtn = $('copySummaryBtn');
+const modelSelect = $('modelSelect');
+const vaultPath = $('vaultPath');
+const subfolder = $('subfolder');
+const filenameTpl = $('filenameTpl');
+const includeSubtitles = $('includeSubtitles');
+
+const pageSelect = $('pageSelect');
+const pagesWrapper = $('pagesWrapper');
+const sttContainer = $('sttContainer');
+const sttBtn = $('sttBtn');
+const sttProgress = $('sttProgress');
+
+const biliLoginBtn = $('biliLoginBtn');
+const qrModal = $('qrModal');
+const closeQrBtn = $('closeQrBtn');
+const qrCodeImg = $('qrCodeImg');
+const qrSpinner = $('qrSpinner');
+const qrStatus = $('qrStatus');
+
+// ======================== Helpers ========================
+function spinnerHTML(text) {
+    return `<span class="spinner">${text} <span class="spinner-dots"><span></span><span></span><span></span></span></span>`;
+}
+
+function statusHTML(type, msg) {
+    const icons = { success: '✅', error: '❌', info: 'ℹ️' };
+    return `<div class="status-msg ${type}">${icons[type] || ''} ${msg}</div>`;
+}
+
+function setProgress(step, status) {
+    // step: 1|2|3  status: 'active'|'done'|'reset'
+    for (let i = 1; i <= 3; i++) {
+        const el = $('step' + i);
+        el.classList.remove('active', 'done');
+        if (i < step) {
+            el.classList.add('done');
+            el.querySelector('.step-icon').textContent = '✓';
+        } else if (i === step) {
+            el.classList.add(status === 'done' ? 'done' : 'active');
+            el.querySelector('.step-icon').textContent = status === 'done' ? '✓' : i;
+        } else {
+            el.querySelector('.step-icon').textContent = i;
+        }
+    }
+    // connectors
+    $('conn1').classList.toggle('filled', step > 1);
+    $('conn2').classList.toggle('filled', step > 2);
+}
+
+function resetAll() {
+    state.subtitlesText = '';
+    state.summary = '';
+    state.meta = null;
+    $('extractSection').classList.remove('visible');
+    $('summarySection').classList.remove('visible');
+    $('savedSection').classList.remove('visible');
+    $('extractStatus').innerHTML = '';
+    $('summaryStatus').innerHTML = '';
+    $('inputStatus').innerHTML = '';
+    pagesWrapper.style.display = 'none';
+    sttContainer.style.display = 'none';
+    sttProgress.style.display = 'none';
+    sttProgress.innerHTML = '';
+    setProgress(1, 'reset');
+}
+
+function formatDuration(sec) {
+    if (!sec) return '';
+    const m = Math.floor(sec / 60);
+    const s = sec % 60;
+    return `${m}分${s}秒`;
+}
+
+function renderMeta(meta) {
+    if (!meta) return;
+    const parts = [];
+    if (meta.title) parts.push(`<span class="meta-item">🎬 ${meta.title}</span>`);
+    if (meta.uploader) parts.push(`<span class="meta-item">👤 ${meta.uploader}</span>`);
+    if (meta.duration) parts.push(`<span class="meta-item">⏱️ ${formatDuration(meta.duration)}</span>`);
+    $('videoMeta').innerHTML = parts.join('');
+}
+
+async function copyText(text, statusEl) {
+    try {
+        await navigator.clipboard.writeText(text);
+        statusEl.innerHTML = statusHTML('success', '已复制到剪贴板');
+        setTimeout(() => { if (statusEl.innerHTML.includes('已复制')) statusEl.innerHTML = ''; }, 2000);
+    } catch {
+        statusEl.innerHTML = statusHTML('error', '复制失败');
+    }
+}
+
+// ======================== API Calls ========================
+async function doExtract(isPageChange = false) {
+    const url = videoUrl.value.trim();
+    if (!url) {
+        $('inputStatus').innerHTML = statusHTML('error', '请输入视频链接');
+        return false;
+    }
+    
+    if (!isPageChange) {
+        resetAll();
+        state.url = url;
+    } else {
+        state.subtitlesText = '';
+        state.summary = '';
+        $('extractSection').classList.remove('visible');
+        $('summarySection').classList.remove('visible');
+        $('savedSection').classList.remove('visible');
+        $('extractStatus').innerHTML = '';
+        $('summaryStatus').innerHTML = '';
+    }
+    
+    setProgress(1, 'active');
+    extractBtn.disabled = true;
+    autoBtn.disabled = true;
+    if (pageSelect) pageSelect.disabled = true;
+    extractBtn.innerHTML = spinnerHTML('提取中');
+    
+    sttContainer.style.display = 'none';
+    sttProgress.style.display = 'none';
+    sttProgress.innerHTML = '';
+    
+    try {
+        const resp = await fetch('/extract', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url })
+        });
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.error || '提取失败');
+        
+        state.platform = data.platform;
+        state.videoId = data.video_id;
+        state.subtitlesText = data.text;
+        state.meta = data.meta;
+        
+        renderMeta(data.meta);
+        
+        // Handle pages list
+        if (data.meta && data.meta.pages && data.meta.pages.length > 1) {
+            pagesWrapper.style.display = 'flex';
+            pageSelect.innerHTML = data.meta.pages.map(p => 
+                `<option value="${p.page}" ${p.page === data.page_num ? 'selected' : ''}>P${p.page}: ${p.part}</option>`
+            ).join('');
+        } else if (!isPageChange) {
+            pagesWrapper.style.display = 'none';
+        }
+        
+        if (data.has_subtitles) {
+            const preview = data.text.length > 3000
+                ? data.text.substring(0, 3000) + '\n\n… (共 ' + data.text.length + ' 字)'
+                : data.text;
+            $('subtitlesPreview').textContent = preview;
+            $('extractSection').classList.add('visible');
+            $('extractStatus').innerHTML = statusHTML('success', `字幕提取成功 · ${data.char_count} 字`);
+            setProgress(1, 'done');
+            return true;
+        } else {
+            sttContainer.style.display = 'block';
+            if (data.is_suspicious) {
+                $('inputStatus').innerHTML = statusHTML('error', `⚠️ 视频字幕提取异常（原因: ${data.suspicious_reason}）。这通常是由于未进行“B站扫码授权”或 Cookie 已失效触发了B站反爬限制导致的。请先点击下方的“B站扫码授权”获取有效 Cookie，或直接使用下方的“语音转文字提取”。`);
+            } else {
+                $('inputStatus').innerHTML = statusHTML('info', '视频已加载，但未检测到官方/自动字幕，建议使用语音转文字 (STT) 提取。');
+            }
+            setProgress(1, 'active');
+            return false;
+        }
+    } catch (err) {
+        $('inputStatus').innerHTML = statusHTML('error', err.message);
+        setProgress(1, 'active');
+        return false;
+    } finally {
+        extractBtn.disabled = false;
+        autoBtn.disabled = false;
+        if (pageSelect) pageSelect.disabled = false;
+        extractBtn.innerHTML = '<span>🔍</span> 提取字幕';
+    }
+}
+
+async function doTranscribe() {
+    sttBtn.disabled = true;
+    extractBtn.disabled = true;
+    autoBtn.disabled = true;
+    if (pageSelect) pageSelect.disabled = true;
+    sttProgress.style.display = 'block';
+    sttProgress.innerHTML = spinnerHTML('正在启动语音转文字任务...');
+    
+    try {
+        const cid = state.meta ? state.meta.cid : null;
+        const resp = await fetch('/transcribe', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                url: state.url,
+                cid: cid
+            })
+        });
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.error || '转录启动失败');
+        
+        const taskId = data.task_id;
+        pollTranscribeStatus(taskId);
+    } catch (err) {
+        sttProgress.innerHTML = statusHTML('error', err.message);
+        enableButtons();
+    }
+}
+
+function pollTranscribeStatus(taskId) {
+    const interval = setInterval(async () => {
+        try {
+            const resp = await fetch(`/transcribe/status/${taskId}`);
+            const data = await resp.json();
+            if (!resp.ok) throw new Error(data.error || '获取状态失败');
+            
+            if (data.status === 'running') {
+                sttProgress.innerHTML = spinnerHTML(data.progress);
+            } else if (data.status === 'completed') {
+                clearInterval(interval);
+                
+                state.subtitlesText = data.result;
+                const preview = data.result.length > 3000
+                    ? data.result.substring(0, 3000) + '\n\n… (共 ' + data.result.length + ' 字)'
+                    : data.result;
+                
+                $('subtitlesPreview').textContent = preview;
+                $('extractSection').classList.add('visible');
+                $('extractStatus').innerHTML = statusHTML('success', `语音转文字提取成功 · ${data.result.length} 字`);
+                sttContainer.style.display = 'none';
+                $('inputStatus').innerHTML = statusHTML('success', '语音转文字转录成功，接下来可以进行 AI 总结！');
+                
+                setProgress(1, 'done');
+                enableButtons();
+            } else if (data.status === 'failed') {
+                clearInterval(interval);
+                throw new Error(data.error || '转录过程出错');
+            }
+        } catch (err) {
+            clearInterval(interval);
+            sttProgress.innerHTML = statusHTML('error', err.message);
+            enableButtons();
+        }
+    }, 2000);
+}
+
+function enableButtons() {
+    sttBtn.disabled = false;
+    extractBtn.disabled = false;
+    autoBtn.disabled = false;
+    if (pageSelect) pageSelect.disabled = false;
+}
+
+async function doSummarize() {
+    if (!state.subtitlesText) return false;
+    setProgress(2, 'active');
+    summarizeBtn.disabled = true;
+    summarizeBtn.innerHTML = spinnerHTML('AI 分析中');
+
+    try {
+        const resp = await fetch('/summarize', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                text: state.subtitlesText,
+                model: modelSelect.value || undefined
+            })
+        });
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.error || '总结失败');
+
+        state.summary = data.summary;
+        $('summaryContent').innerHTML = marked.parse(data.summary);
+        $('summarySection').classList.add('visible');
+        $('summaryStatus').innerHTML = statusHTML('success', 'AI 总结完成');
+
+        setProgress(2, 'done');
+        return true;
+    } catch (err) {
+        $('extractStatus').innerHTML = statusHTML('error', err.message);
+        setProgress(2, 'active');
+        return false;
+    } finally {
+        summarizeBtn.disabled = false;
+        summarizeBtn.innerHTML = '<span>🤖</span> AI 智能总结';
+    }
+}
+
+async function doSave() {
+    if (!state.summary) return false;
+    setProgress(3, 'active');
+    saveBtn.disabled = true;
+    saveBtn.innerHTML = spinnerHTML('保存中');
+
+    try {
+        const title = (state.meta && state.meta.title) || `${state.platform}_${state.videoId}`;
+        const resp = await fetch('/save', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                title,
+                summary: state.summary,
+                url: state.url,
+                platform: state.platform,
+                meta: state.meta,
+                video_id: state.videoId,
+                output_dir: vaultPath.value.trim() || undefined,
+                subfolder: subfolder.value !== '' ? subfolder.value.trim() : undefined,
+                filename_tpl: filenameTpl.value.trim() || undefined,
+                include_subtitles: includeSubtitles.checked,
+                subtitles: includeSubtitles.checked ? state.subtitlesText : undefined,
+            })
+        });
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.error || '保存失败');
+
+        $('savedInfo').innerHTML = `
+            <p style="margin-bottom:0.5rem;">📄 文件已保存至:</p>
+            <p style="color:var(--accent-3); word-break:break-all;">${data.filepath}</p>
+        `;
+        $('savedSection').classList.add('visible');
+        $('summaryStatus').innerHTML = statusHTML('success', '已保存到 Obsidian');
+
+        setProgress(3, 'done');
+        loadHistory();
+        return true;
+    } catch (err) {
+        $('summaryStatus').innerHTML = statusHTML('error', err.message);
+        setProgress(3, 'active');
+        return false;
+    } finally {
+        saveBtn.disabled = false;
+        saveBtn.innerHTML = '<span>💾</span> 保存到 Obsidian';
+    }
+}
+
+// ======================== One-Click Auto ========================
+async function doAuto() {
+    const url = videoUrl.value.trim();
+    if (!url) {
+        $('inputStatus').innerHTML = statusHTML('error', '请输入视频链接');
+        return;
+    }
+    resetAll();
+    state.url = url;
+
+    extractBtn.disabled = true;
+    autoBtn.disabled = true;
+    autoBtn.innerHTML = spinnerHTML('全自动处理中');
+
+    try {
+        setProgress(1, 'active');
+        $('inputStatus').innerHTML = statusHTML('info', '正在提取/转录字幕…（若无字幕将自动启动语音识别）');
+
+        const resp = await fetch('/auto', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                url,
+                model: modelSelect.value || undefined,
+                output_dir: vaultPath.value.trim() || undefined,
+                subfolder: subfolder.value !== '' ? subfolder.value.trim() : undefined,
+                filename_tpl: filenameTpl.value.trim() || undefined,
+                include_subtitles: includeSubtitles.checked,
+            })
+        });
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.error || '处理失败');
+
+        // Fill state
+        state.subtitlesText = data.text;
+        state.summary = data.summary;
+        state.meta = data.meta;
+
+        // Show step 1
+        setProgress(1, 'done');
+        renderMeta(data.meta);
+        const preview = data.text.length > 3000
+            ? data.text.substring(0, 3000) + '\n\n… (共 ' + data.text.length + ' 字)'
+            : data.text;
+        $('subtitlesPreview').textContent = preview;
+        $('extractSection').classList.add('visible');
+        $('extractStatus').innerHTML = statusHTML('success', `字幕提取成功 · ${data.text.length} 字`);
+
+        // Show step 2
+        await new Promise(r => setTimeout(r, 300));
+        setProgress(2, 'done');
+        $('summaryContent').innerHTML = marked.parse(data.summary);
+        $('summarySection').classList.add('visible');
+        $('summaryStatus').innerHTML = statusHTML('success', 'AI 总结完成');
+
+        // Show step 3
+        if (data.filepath) {
+            await new Promise(r => setTimeout(r, 300));
+            setProgress(3, 'done');
+            $('savedInfo').innerHTML = `
+                <p style="margin-bottom:0.5rem;">📄 文件已保存至:</p>
+                <p style="color:var(--accent-3); word-break:break-all;">${data.filepath}</p>
+            `;
+            $('savedSection').classList.add('visible');
+            loadHistory();
+        }
+
+        $('inputStatus').innerHTML = statusHTML('success', '🎉 全部完成！');
+
+    } catch (err) {
+        $('inputStatus').innerHTML = statusHTML('error', err.message);
+    } finally {
+        extractBtn.disabled = false;
+        autoBtn.disabled = false;
+        autoBtn.innerHTML = '<span>⚡</span> 一键全自动';
+    }
+}
+
+// ======================== History ========================
+async function loadHistory() {
+    try {
+        const resp = await fetch('/history');
+        const data = await resp.json();
+        const list = $('historyList');
+        if (!data || data.length === 0) {
+            list.innerHTML = '<div class="history-empty">暂无记录</div>';
+            return;
+        }
+        list.innerHTML = data.map(h => `
+            <div class="history-item">
+                <span class="history-title" title="${h.title || ''}">${h.title || '未命名'}</span>
+                <span class="history-platform ${h.platform || ''}">${h.platform || '-'}</span>
+                <span class="history-date">${h.date || ''}</span>
+            </div>
+        `).join('');
+    } catch { /* silent */ }
+}
+
+// ======================== Bilibili Login ========================
+let qrPollInterval = null;
+
+async function startBiliLogin() {
+    qrModal.style.display = 'flex';
+    qrSpinner.style.display = 'flex';
+    qrSpinner.innerHTML = spinnerHTML('正在获取二维码');
+    qrCodeImg.style.display = 'none';
+    qrCodeImg.src = '';
+    qrStatus.textContent = '正在获取二维码...';
+    
+    if (qrPollInterval) {
+        clearInterval(qrPollInterval);
+        qrPollInterval = null;
+    }
+    
+    try {
+        const resp = await fetch('/bilibili/qrcode');
+        const data = await resp.json();
+        
+        if (!resp.ok || data.code !== 0) {
+            throw new Error(data.message || '获取二维码失败');
+        }
+        
+        const qrUrl = data.data.url;
+        const qrcodeKey = data.data.qrcode_key;
+        
+        // 使用免费的在线二维码服务生成二维码
+        const qrImgUrl = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(qrUrl)}`;
+        
+        qrCodeImg.src = qrImgUrl;
+        qrCodeImg.onload = () => {
+            qrSpinner.style.display = 'none';
+            qrCodeImg.style.display = 'block';
+            qrStatus.innerHTML = '请使用 <strong style="color:var(--accent-3)">Bilibili App</strong> 扫码登录';
+        };
+        
+        pollBiliLoginStatus(qrcodeKey);
+        
+    } catch (err) {
+        qrSpinner.style.display = 'none';
+        qrStatus.innerHTML = statusHTML('error', `获取二维码失败: ${err.message}`);
+    }
+}
+
+function pollBiliLoginStatus(qrcodeKey) {
+    qrPollInterval = setInterval(async () => {
+        try {
+            const resp = await fetch(`/bilibili/qrcode/poll?qrcode_key=${qrcodeKey}`);
+            const data = await resp.json();
+            
+            if (!resp.ok) {
+                throw new Error(data.error || '请求状态失败');
+            }
+            
+            const code = data.code;
+            const subData = data.data || {};
+            const subCode = subData.code;
+            
+            if (code === 0) {
+                if (subCode === 0) {
+                    clearInterval(qrPollInterval);
+                    qrPollInterval = null;
+                    qrStatus.innerHTML = statusHTML('success', '登录成功！已自动更新 Cookie。');
+                    setTimeout(() => {
+                        qrModal.style.display = 'none';
+                        $('inputStatus').innerHTML = statusHTML('success', 'Bilibili 扫码授权成功，现在可以提取受限视频/字幕了！');
+                    }, 1500);
+                } else if (subCode === 86090) {
+                    qrStatus.innerHTML = '已扫码，请在手机上 <strong style="color:var(--success)">确认登录</strong>';
+                } else if (subCode === 86101) {
+                    qrStatus.innerHTML = '请使用 <strong style="color:var(--accent-3)">Bilibili App</strong> 扫码登录';
+                } else if (subCode === 86038) {
+                    clearInterval(qrPollInterval);
+                    qrPollInterval = null;
+                    qrStatus.innerHTML = statusHTML('error', '二维码已过期，请关闭窗口重新点击“B站扫码授权”');
+                } else {
+                    qrStatus.innerHTML = `状态码: ${subCode}，${subData.message || '等待扫码'}`;
+                }
+            } else {
+                throw new Error(data.message || '轮询接口返回异常');
+            }
+            
+        } catch (err) {
+            clearInterval(qrPollInterval);
+            qrPollInterval = null;
+            qrStatus.innerHTML = statusHTML('error', `轮询失败: ${err.message}`);
+        }
+    }, 3000);
+}
+
+function closeBiliLogin() {
+    qrModal.style.display = 'none';
+    if (qrPollInterval) {
+        clearInterval(qrPollInterval);
+        qrPollInterval = null;
+    }
+}
+
+// ======================== Event Listeners ========================
+extractBtn.addEventListener('click', () => doExtract(false));
+summarizeBtn.addEventListener('click', doSummarize);
+saveBtn.addEventListener('click', doSave);
+autoBtn.addEventListener('click', doAuto);
+sttBtn.addEventListener('click', doTranscribe);
+
+pageSelect.addEventListener('change', () => {
+    const selectedPage = pageSelect.value;
+    let currentUrl = videoUrl.value;
+    if (currentUrl.includes('p=')) {
+        currentUrl = currentUrl.replace(/p=\d+/, 'p=' + selectedPage);
+    } else {
+        const separator = currentUrl.includes('?') ? '&' : '?';
+        currentUrl = currentUrl + separator + 'p=' + selectedPage;
+    }
+    videoUrl.value = currentUrl;
+    state.url = currentUrl;
+    doExtract(true);
+});
+
+copySubBtn.addEventListener('click', () => copyText(state.subtitlesText, $('extractStatus')));
+copySummaryBtn.addEventListener('click', () => copyText(state.summary, $('summaryStatus')));
+
+// History toggle
+$('historyToggle').addEventListener('click', () => {
+    $('historyToggle').classList.toggle('open');
+    $('historyList').classList.toggle('open');
+});
+
+// Enter key to extract
+videoUrl.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') doExtract(false);
+});
+
+// Bilibili Login Events
+biliLoginBtn.addEventListener('click', startBiliLogin);
+closeQrBtn.addEventListener('click', closeBiliLogin);
+window.addEventListener('click', (e) => {
+    if (e.target === qrModal) {
+        closeBiliLogin();
+    }
+});
+
+// Load history on page load
+loadHistory();
+</script>
+</body>
+</html>
