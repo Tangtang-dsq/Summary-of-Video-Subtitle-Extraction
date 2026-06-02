@@ -5,37 +5,46 @@
 ## ✨ 功能特性
 
 - 🎬 **双平台支持** — YouTube 和 Bilibili 视频字幕提取
-- 🤖 **AI 智能总结** — 生成结构化 Markdown 笔记（概述 / 要点 / 详细笔记 / 金句 / 标签）
+- 🤖 **AI 智能总结** — 生成结构化 Markdown 笔记（概述 / 核心要点 / 详细笔记 / 金句 / 标签）
+- 🧮 **LaTeX 公式支持** — 自动将视频中的数学公式、推导步骤转化为标准的 LaTeX 格式（行内 `$公式$` / 独立行 `$$公式$$`）
+- 📐 **知识点与例题绑定** — 自动按小节或时间戳层级化组织，并以 **「知识点 + 对应例题/解析」** 的一一对应结构进行排版
+- 🔑 **前端显式配置** — 网页端直接配置 API Key、Base URL 以及模型名称（支持自由手填任意模型），并具备 **`localStorage` 本地浏览器持久化** 与 **连通性测试 (Test Connection)** 功能
 - ⚡ **一键全自动** — 提取 → 总结 → 保存，一气呵成
 - 💾 **Obsidian 集成** — 自动保存为带 YAML frontmatter 的 Markdown 文件
-- 📊 **多模型选择** — 支持 GPT-4o / GPT-4 / GPT-3.5 Turbo 等
 - 📜 **超长字幕处理** — 自动分段总结后合并
 - 📚 **历史记录** — 自动保存处理记录
 - 🌙 **现代暗色 UI** — 玻璃拟态设计，流畅动画
 
 ## 快速开始
 
-### 1. 安装依赖
+本项目使用现代 Python 包管理器 `uv` 进行虚拟环境和依赖管理。
+
+### 1. 安装并同步依赖
+
+首先确保已安装 `uv`，然后在项目根目录下运行同步命令：
 
 ```bash
-pip install -r requirements.txt
+# 同步项目依赖并自动创建 .venv 虚拟环境
+uv sync
 ```
 
-### 2. 配置环境变量
+### 2. 配置环境变量 (可选)
 
-复制 `.env.example` 为 `.env`，填入配置：
+复制 `.env.example` 为 `.env`：
 
 ```ini
-OPENAI_API_KEY=sk-xxxx
-OPENAI_BASE_URL=              # 可选，兼容 API 代理地址
-OPENAI_MODEL=gpt-4o           # 默认模型
+OPENAI_API_KEY=sk-xxxx           # 可在前端页面配置，在此配置作为后端兜底
+OPENAI_BASE_URL=                  # 可选，兼容 API 代理地址
 OBSIDIAN_VAULT_PATH=C:\Users\你的用户名\Documents\Obsidian\你的库名
+OBSIDIAN_SUBFOLDER=视频笔记        # 默认保存的子目录
 ```
+
+*注：API 密钥、代理地址及所用模型亦可直接在前端网页的设置中输入，输入后会自动保存到浏览器本地缓存中。*
 
 ### 3. 运行服务
 
 ```bash
-python app.py
+uv run app.py
 ```
 
 ### 4. 打开浏览器
@@ -47,11 +56,12 @@ python app.py
 ### 手动三步流程
 1. 粘贴视频链接
 2. 点击「提取字幕」
-3. 点击「AI 智能总结」
-4. 点击「保存到 Obsidian」
+3. 在设置中输入 API Key / Base URL 并选择/填写模型名称（可点击「⚡ 测试连通性」进行测试）
+4. 点击「AI 智能总结」
+5. 点击「保存到 Obsidian」
 
 ### 一键全自动
-1. 粘贴视频链接
+1. 粘贴视频链接与填写配置
 2. 点击「⚡ 一键全自动」— 自动完成提取、总结、保存
 
 ## 输出格式
@@ -59,7 +69,12 @@ python app.py
 生成的 Markdown 文件包含：
 - **YAML frontmatter**: title, source, platform, date, duration, uploader, tags
 - **视频信息**: 原始链接、平台、生成时间
-- **AI 总结**: 概述 → 核心要点 → 详细笔记 → 关键引用 → 建议标签
+- **AI 总结**:
+  - **概述** (含 LaTeX 公式呈现)
+  - **核心要点**
+  - **详细笔记与例题解析** (按照章节/分段组织，严格遵循「知识点 + 对应例题」的一一对应排版)
+  - **关键引用 / 金句**
+  - **建议标签**
 - **原始字幕** (可选): 可折叠的完整字幕文本
 
 文件默认保存到 Obsidian 库的 `视频笔记/` 子目录，可通过以下方式自定义：
@@ -84,6 +99,5 @@ python app.py
 
 ## 注意事项
 
-- 需要有效的 OpenAI API Key（或兼容 API，如 DeepSeek）
-- Bilibili 部分视频可能需要登录 cookies（可配置 yt-dlp cookie 文件）
-- 字幕过长时自动分段总结后合并
+- 前端输入的 API Key 及配置仅保存在本地浏览器 `localStorage` 中，不会持久存储在除你的本地运行服务器之外的任何第三方云端。
+- Bilibili 部分视频可能需要登录 cookies（可在页面点击「📺 B站扫码授权」完成登录并自动更新 Cookie 配置）。

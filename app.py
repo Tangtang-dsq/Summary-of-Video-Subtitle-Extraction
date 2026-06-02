@@ -23,7 +23,6 @@ CORS(app)
 # ---------------------------------------------------------------------------
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 OPENAI_BASE_URL = os.getenv('OPENAI_BASE_URL')  # optional proxy / compatible API
-OPENAI_MODEL = os.getenv('OPENAI_MODEL', 'gpt-4o')
 OBSIDIAN_VAULT_PATH = os.getenv('OBSIDIAN_VAULT_PATH')
 OBSIDIAN_SUBFOLDER = os.getenv('OBSIDIAN_SUBFOLDER', '视频笔记')
 HISTORY_FILE = os.path.join(os.path.dirname(__file__), 'history.json')
@@ -32,10 +31,10 @@ def get_bilibili_cookie():
     load_dotenv(override=True)
     return os.getenv('BILIBILI_COOKIE', '')
 
-def get_openai_client():
+def get_openai_client(custom_api_key: str = None, custom_base_url: str = None):
     load_dotenv(override=True)
-    api_key = os.getenv('OPENAI_API_KEY')
-    base_url = os.getenv('OPENAI_BASE_URL')
+    api_key = custom_api_key or os.getenv('OPENAI_API_KEY')
+    base_url = custom_base_url or os.getenv('OPENAI_BASE_URL')
     if not api_key:
         return None
     client_kwargs = {'api_key': api_key}
@@ -44,14 +43,13 @@ def get_openai_client():
     return OpenAI(**client_kwargs)
 
 
-def get_transcription_client():
+def get_transcription_client(custom_api_key: str = None, custom_base_url: str = None):
     load_dotenv(override=True)
-    api_key = os.getenv('OPENAI_TRANSCRIPTION_API_KEY') or os.getenv('OPENAI_API_KEY')
-    base_url = os.getenv('OPENAI_TRANSCRIPTION_BASE_URL')
-    main_base_url = os.getenv('OPENAI_BASE_URL')
+    api_key = custom_api_key or os.getenv('OPENAI_TRANSCRIPTION_API_KEY') or os.getenv('OPENAI_API_KEY')
+    base_url = custom_base_url or os.getenv('OPENAI_TRANSCRIPTION_BASE_URL') or os.getenv('OPENAI_BASE_URL')
     if not api_key:
         return None
-    if main_base_url and not base_url and not os.getenv('OPENAI_TRANSCRIPTION_API_KEY'):
+    if not custom_api_key and os.getenv('OPENAI_BASE_URL') and not base_url and not os.getenv('OPENAI_TRANSCRIPTION_API_KEY'):
         return None
 
     client_kwargs = {'api_key': api_key}
@@ -529,7 +527,7 @@ def transcode_and_segment(input_path: str, temp_dir: str):
     return chunks
 
 
-def run_transcription_async(task_id, url, platform, video_id, page_num, cid):
+def run_transcription_async(task_id, url, platform, video_id, page_num, cid, custom_api_key=None, custom_base_url=None):
     temp_dir = os.path.join(os.path.dirname(__file__), 'temp_audio', task_id)
     try:
         TRANSCRIPTION_TASKS[task_id] = {
@@ -553,7 +551,7 @@ def run_transcription_async(task_id, url, platform, video_id, page_num, cid):
         # 3. Transcribe chunks
         total_chunks = len(chunks)
         transcripts = []
-        ai_client = get_transcription_client()
+        ai_client = get_transcription_client(custom_api_key, custom_base_url)
         if not ai_client:
             raise Exception(transcription_config_error())
         transcription_model = get_transcription_model()
@@ -596,18 +594,40 @@ def run_transcription_async(task_id, url, platform, video_id, page_num, cid):
 # AI Summarization
 # ---------------------------------------------------------------------------
 
-SUMMARY_SYSTEM_PROMPT = """你是一个专业的视频内容分析助手。请对以下视频字幕内容进行深度总结，输出结构化的 Markdown 笔记。
+SUMMARY_SYSTEM_PROMPT = r"""你是一个专业的视频内容分析助手。请对以下视频字幕内容进行深度总结，输出结构化的 Markdown 笔记。
 
-请按照以下结构输出：
+⚠️ 必须遵守的格式与排版规范：
+1. **LaTeX 数学公式**：
+   - 视频中涉及的所有数学公式、物理方程、数学符号、变量、极限、积分、矩阵等，必须使用标准的 LaTeX 数学公式语法插入。
+   - 行内公式（如变量名、简短表达式）必须使用单美元符号包围，例如：$E = mc^2$ 或 $\theta$。
+   - 独立行公式（如重要方程、推导步骤）必须使用双美元符号包围，例如：
+     $$f(x) = \int_{-\infty}^{\infty} e^{-x^2} dx$$
+   - 严禁使用纯文本或普通斜体代替 LaTeX 符号。
+
+2. **来源与章节组织（按照来源链接）**：
+   - 总结内容应按视频的具体章节、段落或来源链接（如果字幕中包含时间戳或分段信息）进行层级化组织。
+   - 每一部分开头应明确标注其对应的视频来源、小节或时间范围（若有时间戳，可使用类似 `[05:12](来源链接)` 或 `[分段标题](视频链接)` 形式进行关联）。
+
+3. **知识点 + 例题一一对应结构**：
+   - 在每个分段/小节的详细笔记中，必须严格采用“**知识点 + 对应例题**”的一一对应结构。
+   - 首先阐述一个具体的知识点/定理/概念（注明定义、公式及解释），紧接着给出该知识点对应的例题、解析或应用步骤，然后才是下一个知识点。
+   - 每个知识点和对应的例题应有清晰的排版关联，让读者能直观看出它们是成对出现的。
+
+请按照以下结构输出 Markdown 笔记：
 
 ## 📌 概述
-用 2-3 句话概括视频的核心主题 and 结论。
+用 2-3 句话概括视频的核心主题、主要研究对象和结论。如果涉及主要公式，请用 LaTeX 呈现。
 
 ## 🔑 核心要点
-- 列出 3-8 个关键要点，每个要点一句话
+- 列出 3-8 个关键要点，每个要点一句话。
 
-## 📝 详细笔记
-按照视频的逻辑顺序，分段总结详细内容。每段用 ### 小标题标注。
+## 📝 详细笔记与例题解析
+按照视频的章节、分段或时间顺序组织。对每个小节：
+### [小节标题/来源链接/时间戳]
+- **知识点 1**：[知识点名称/概念阐述，包含 LaTeX 公式定义]
+  - **对应例题 1**：[视频中与此知识点对应的具体例题描述、推导或解析步骤，使用 LaTeX 公式]
+- **知识点 2**：[知识点名称/概念阐述...]
+  - **对应例题 2**：[对应例题或实际应用案例...]
 
 ## 💡 关键引用 / 金句
 如果字幕中有值得记录的原话或金句，列出 2-5 条。
@@ -618,15 +638,18 @@ SUMMARY_SYSTEM_PROMPT = """你是一个专业的视频内容分析助手。请�
 请使用中文输出（除非字幕是纯英文内容则用英文）。保持专业、简洁、有条理。"""
 
 
-def summarize_text(text: str, model: str | None = None, max_chars: int = 15000):
-    ai_client = get_openai_client()
+def summarize_text(text: str, model: str | None = None, max_chars: int = 15000,
+                   custom_api_key: str = None, custom_base_url: str = None):
+    ai_client = get_openai_client(custom_api_key, custom_base_url)
     if not ai_client:
-        return '❌ 未配置 OpenAI API Key，请在 .env 中设置 OPENAI_API_KEY'
+        return '❌ 未配置 OpenAI API Key，请在 .env 中设置 OPENAI_API_KEY 或在前端页面中输入'
 
-    use_model = model or os.getenv('OPENAI_MODEL', 'gpt-4o')
+    use_model = model
+    if not use_model:
+        return '❌ 错误：未指定模型。请在前端选择模型。'
 
     if len(text) > max_chars:
-        return _chunked_summarize(text, use_model, max_chars)
+        return _chunked_summarize(text, use_model, max_chars, custom_api_key, custom_base_url)
 
     try:
         response = ai_client.chat.completions.create(
@@ -643,13 +666,14 @@ def summarize_text(text: str, model: str | None = None, max_chars: int = 15000):
         return f'❌ AI 总结出错: {str(e)}'
 
 
-def _chunked_summarize(text: str, model: str, chunk_size: int = 12000):
+def _chunked_summarize(text: str, model: str, chunk_size: int = 12000,
+                       custom_api_key: str = None, custom_base_url: str = None):
     """Split long text into chunks, summarize each, then merge."""
     chunks = []
     for i in range(0, len(text), chunk_size):
         chunks.append(text[i:i + chunk_size])
 
-    ai_client = get_openai_client()
+    ai_client = get_openai_client(custom_api_key, custom_base_url)
     if not ai_client:
         return '❌ 未配置 OpenAI API Key'
 
@@ -659,7 +683,7 @@ def _chunked_summarize(text: str, model: str, chunk_size: int = 12000):
             resp = ai_client.chat.completions.create(
                 model=model,
                 messages=[
-                    {'role': 'system', 'content': f'你是一个专业的视频字幕总结助手。这是第 {idx+1}/{len(chunks)} 段字幕。请提取该段的核心要点，用简洁的中文列出。'},
+                    {'role': 'system', 'content': f'你是一个专业的视频字幕总结助手。这是第 {idx+1}/{len(chunks)} 段字幕。请提取该段的核心知识点与例题，所有公式/符号必须使用 LaTeX 格式（行内用 $...$，独立行用 $$...$$），按照“知识点+对应例题”的结构用简洁的中文列出。'},
                     {'role': 'user', 'content': chunk},
                 ],
                 temperature=0.4,
@@ -849,11 +873,13 @@ def extract():
 
 @app.route('/transcribe', methods=['POST'])
 def transcribe():
-    ai_client = get_transcription_client()
+    data = request.json
+    custom_api_key = data.get('api_key')
+    custom_base_url = data.get('base_url')
+    ai_client = get_transcription_client(custom_api_key, custom_base_url)
     if not ai_client:
         return jsonify({'error': transcription_config_error()}), 400
         
-    data = request.json
     url = data.get('url', '').strip()
     if not url:
         return jsonify({'error': '请输入视频链接'}), 400
@@ -871,7 +897,7 @@ def transcribe():
     
     task_id = str(uuid.uuid4())
     
-    t = threading.Thread(target=run_transcription_async, args=(task_id, url, platform, video_id, page_num, cid))
+    t = threading.Thread(target=run_transcription_async, args=(task_id, url, platform, video_id, page_num, cid, custom_api_key, custom_base_url))
     t.daemon = True
     t.start()
     
@@ -891,10 +917,47 @@ def summarize():
     data = request.json
     text = data.get('text', '')
     model = data.get('model')
+    custom_api_key = data.get('api_key')
+    custom_base_url = data.get('base_url')
     if not text:
         return jsonify({'error': '无字幕文本'}), 400
-    summary = summarize_text(text, model=model)
+    summary = summarize_text(text, model=model, custom_api_key=custom_api_key, custom_base_url=custom_base_url)
     return jsonify({'summary': summary})
+
+
+@app.route('/test_connection', methods=['POST'])
+def test_connection():
+    data = request.json
+    custom_api_key = data.get('api_key')
+    custom_base_url = data.get('base_url')
+    model = data.get('model')
+    if not model:
+        return jsonify({'success': False, 'error': '未指定测试模型。请在前端选择具体的模型。'}), 400
+    
+    ai_client = get_openai_client(custom_api_key, custom_base_url)
+    if not ai_client:
+        return jsonify({'success': False, 'error': 'API Key 未设置，无法进行测试。请检查环境变量或页面配置。'}), 400
+        
+    try:
+        response = ai_client.chat.completions.create(
+            model=model,
+            messages=[
+                {'role': 'user', 'content': 'Ping'},
+            ],
+            temperature=0.1,
+            max_tokens=10,
+        )
+        content = response.choices[0].message.content.strip()
+        return jsonify({
+            'success': True,
+            'message': '连接成功！',
+            'response': content
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 200
 
 
 @app.route('/save', methods=['POST'])
@@ -942,6 +1005,9 @@ def auto():
     subfolder = data.get('subfolder')
     include_subtitles = data.get('include_subtitles', False)
 
+    custom_api_key = data.get('api_key')
+    custom_base_url = data.get('base_url')
+
     if not url:
         return jsonify({'error': '请输入视频链接'}), 400
 
@@ -964,7 +1030,7 @@ def auto():
         text = get_youtube_subtitles(video_id)
         
     if not text:
-        ai_client = get_transcription_client()
+        ai_client = get_transcription_client(custom_api_key, custom_base_url)
         if ai_client:
             transcription_model = get_transcription_model()
             temp_id = f"auto_{uuid.uuid4()}"
@@ -991,7 +1057,7 @@ def auto():
         else:
             return jsonify({'error': f'未找到可用字幕，且{transcription_config_error()}'}), 400
 
-    summary = summarize_text(text, model=model)
+    summary = summarize_text(text, model=model, custom_api_key=custom_api_key, custom_base_url=custom_base_url)
 
     title = meta.get('title') or f'{platform}_{video_id}'
     filepath, err = save_to_obsidian(title, summary, url, platform, meta,

@@ -286,7 +286,8 @@
             color: var(--text-secondary);
         }
         .setting-item select,
-        .setting-item input[type="text"] {
+        .setting-item input[type="text"],
+        .setting-item input[type="password"] {
             background: rgba(255,255,255,0.04);
             border: 1px solid var(--glass-border);
             border-radius: var(--radius-sm);
@@ -298,7 +299,8 @@
             transition: border-color var(--transition-normal);
         }
         .setting-item select:focus,
-        .setting-item input[type="text"]:focus {
+        .setting-item input[type="text"]:focus,
+        .setting-item input[type="password"]:focus {
             border-color: var(--accent-1);
         }
         .setting-item select option { background: #1a1a2e; }
@@ -769,21 +771,20 @@
         <div class="settings-row">
             <div class="setting-item">
                 <span>🤖 模型:</span>
-                <select id="modelSelect">
-                    <option value="">默认</option>
-                    <optgroup label="OpenAI">
-                        <option value="gpt-4o">GPT-4o</option>
-                        <option value="gpt-4o-mini">GPT-4o Mini</option>
-                        <option value="gpt-4">GPT-4</option>
-                        <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
-                    </optgroup>
-                    <optgroup label="DeepSeek">
-                        <option value="deepseek-v4-pro">DeepSeek V4 Pro</option>
-                        <option value="deepseek-v4-flash">DeepSeek V4 Flash</option>
-                        <option value="deepseek-reasoner">DeepSeek R1</option>
-                        <option value="deepseek-chat">DeepSeek V3</option>
-                    </optgroup>
-                </select>
+                <input type="text" id="modelSelect" placeholder="例如: gpt-4o" value="gpt-4o" style="width: 150px;" />
+            </div>
+            <div class="setting-item">
+                <span>🔑 API Key:</span>
+                <input type="password" id="apiKey" placeholder="留空使用后端环境变量" style="width: 180px;" />
+            </div>
+            <div class="setting-item">
+                <span>🌐 Base URL:</span>
+                <input type="text" id="baseUrl" placeholder="留空使用后端默认地址" style="width: 200px;" />
+            </div>
+            <div class="setting-item">
+                <button class="btn btn-secondary" id="testConnBtn" style="padding: 0.45rem 0.85rem; font-size: 0.78rem; border-radius: var(--radius-sm); border: 1px solid var(--accent-1); color: var(--accent-3);">
+                    <span>⚡</span> 测试连通性
+                </button>
             </div>
             <div class="setting-item">
                 <span>📁 Obsidian 路径:</span>
@@ -921,6 +922,9 @@ const saveBtn = $('saveBtn');
 const copySubBtn = $('copySubBtn');
 const copySummaryBtn = $('copySummaryBtn');
 const modelSelect = $('modelSelect');
+const apiKey = $('apiKey');
+const baseUrl = $('baseUrl');
+const testConnBtn = $('testConnBtn');
 const vaultPath = $('vaultPath');
 const subfolder = $('subfolder');
 const filenameTpl = $('filenameTpl');
@@ -1115,7 +1119,9 @@ async function doTranscribe() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 url: state.url,
-                cid: cid
+                cid: cid,
+                api_key: apiKey.value.trim() || undefined,
+                base_url: baseUrl.value.trim() || undefined
             })
         });
         const data = await resp.json();
@@ -1185,7 +1191,9 @@ async function doSummarize() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 text: state.subtitlesText,
-                model: modelSelect.value || undefined
+                model: modelSelect.value.trim() || undefined,
+                api_key: apiKey.value.trim() || undefined,
+                base_url: baseUrl.value.trim() || undefined
             })
         });
         const data = await resp.json();
@@ -1279,11 +1287,13 @@ async function doAuto() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 url,
-                model: modelSelect.value || undefined,
+                model: modelSelect.value.trim() || undefined,
                 output_dir: vaultPath.value.trim() || undefined,
                 subfolder: subfolder.value !== '' ? subfolder.value.trim() : undefined,
                 filename_tpl: filenameTpl.value.trim() || undefined,
                 include_subtitles: includeSubtitles.checked,
+                api_key: apiKey.value.trim() || undefined,
+                base_url: baseUrl.value.trim() || undefined
             })
         });
         const data = await resp.json();
@@ -1499,6 +1509,71 @@ window.addEventListener('click', (e) => {
 
 // Load history on page load
 loadHistory();
+
+// ======================== API Key & Base URL persistence ========================
+document.addEventListener('DOMContentLoaded', () => {
+    if (localStorage.getItem('api_key')) apiKey.value = localStorage.getItem('api_key');
+    if (localStorage.getItem('base_url')) baseUrl.value = localStorage.getItem('base_url');
+    if (localStorage.getItem('model')) modelSelect.value = localStorage.getItem('model');
+    if (localStorage.getItem('vault_path')) vaultPath.value = localStorage.getItem('vault_path');
+    if (localStorage.getItem('subfolder')) subfolder.value = localStorage.getItem('subfolder');
+    if (localStorage.getItem('filename_tpl')) filenameTpl.value = localStorage.getItem('filename_tpl');
+    if (localStorage.getItem('include_subtitles') !== null) {
+        includeSubtitles.checked = localStorage.getItem('include_subtitles') === 'true';
+    }
+});
+
+const saveSettingsToStorage = () => {
+    localStorage.setItem('api_key', apiKey.value.trim());
+    localStorage.setItem('base_url', baseUrl.value.trim());
+    localStorage.setItem('model', modelSelect.value.trim());
+    localStorage.setItem('vault_path', vaultPath.value.trim());
+    localStorage.setItem('subfolder', subfolder.value.trim());
+    localStorage.setItem('filename_tpl', filenameTpl.value.trim());
+    localStorage.setItem('include_subtitles', includeSubtitles.checked);
+};
+
+apiKey.addEventListener('input', saveSettingsToStorage);
+baseUrl.addEventListener('input', saveSettingsToStorage);
+modelSelect.addEventListener('input', saveSettingsToStorage);
+vaultPath.addEventListener('input', saveSettingsToStorage);
+subfolder.addEventListener('input', saveSettingsToStorage);
+filenameTpl.addEventListener('input', saveSettingsToStorage);
+includeSubtitles.addEventListener('change', saveSettingsToStorage);
+
+// ======================== Test Connection ========================
+async function doTestConnection() {
+    testConnBtn.disabled = true;
+    testConnBtn.innerHTML = spinnerHTML('测试中');
+    
+    const statusEl = $('inputStatus');
+    statusEl.innerHTML = statusHTML('info', '正在进行模型连通性测试，请稍候...');
+    
+    try {
+        const resp = await fetch('/test_connection', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                api_key: apiKey.value.trim() || undefined,
+                base_url: baseUrl.value.trim() || undefined,
+                model: modelSelect.value.trim() || undefined
+            })
+        });
+        const data = await resp.json();
+        if (resp.ok && data.success) {
+            statusEl.innerHTML = statusHTML('success', `模型连接成功！测试响应: "${data.response}"`);
+        } else {
+            statusEl.innerHTML = statusHTML('error', `连接测试失败: ${data.error || '未知错误'}`);
+        }
+    } catch (err) {
+        statusEl.innerHTML = statusHTML('error', `网络请求失败: ${err.message}`);
+    } finally {
+        testConnBtn.disabled = false;
+        testConnBtn.innerHTML = '<span>⚡</span> 测试连通性';
+    }
+}
+
+testConnBtn.addEventListener('click', doTestConnection);
 </script>
 </body>
 </html>
